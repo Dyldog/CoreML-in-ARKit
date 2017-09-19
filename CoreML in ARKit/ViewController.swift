@@ -13,16 +13,26 @@ import ARKit
 import Vision
 
 class ViewController: UIViewController, ARSCNViewDelegate {
-
+    
     // SCENE
     @IBOutlet var sceneView: ARSCNView!
     let bubbleDepth : Float = 0.01 // the 'depth' of 3D text
     var latestPrediction : String = "…" // a variable containing the latest CoreML prediction
     
     // COREML
+    var mlModel : VNCoreMLModel! {
+        didSet {
+            // Set up Vision-CoreML Request
+            let classificationRequest = VNCoreMLRequest(model: mlModel, completionHandler: classificationCompleteHandler)
+            classificationRequest.imageCropAndScaleOption = VNImageCropAndScaleOption.centerCrop // Crop from centre of images and scale to appropriate size.
+            visionRequests = [classificationRequest]
+        }
+    }
+    
     var visionRequests = [VNRequest]()
     let dispatchQueueML = DispatchQueue(label: "com.hw.dispatchqueueml") // A Serial Queue
     @IBOutlet weak var debugTextView: UITextView!
+    @IBOutlet weak var modelSegmentedControl: UISegmentedControl!
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -50,15 +60,15 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         //////////////////////////////////////////////////
         
         // Set up Vision Model
-        guard let inceptionV3Model = try? VNCoreMLModel(for: Inceptionv3().model) else {
-            fatalError("Could not load model. Ensure model has been drag and dropped (copied) to XCode Project from https://developer.apple.com/machine-learning/")
+        self.modelSegmentedControl.removeAllSegments()
+        
+        for i in 0..<self.numberOfMLModels() {
+            self.modelSegmentedControl.insertSegment(withTitle: self.titleForMLModel(at: i), at: i, animated: false)
         }
         
-        // Set up Vision-CoreML Request
-        let classificationRequest = VNCoreMLRequest(model: inceptionV3Model, completionHandler: classificationCompleteHandler)
-        classificationRequest.imageCropAndScaleOption = VNImageCropAndScaleOption.centerCrop // Crop from centre of images and scale to appropriate size.
-        visionRequests = [classificationRequest]
+        self.modelSegmentedControl.selectedSegmentIndex = 0
         
+        self.updateMLModel()
         // Begin Loop to Update CoreML
         loopCoreMLUpdate()
     }
@@ -67,7 +77,7 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         super.viewWillAppear(animated)
         
         // Create a session configuration
-        let configuration = ARWorldTrackingSessionConfiguration()
+        let configuration = ARWorldTrackingConfiguration()
         // Enable plane detection
         configuration.planeDetection = .horizontal
         
@@ -86,7 +96,7 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         super.didReceiveMemoryWarning()
         // Release any cached data, images, etc that aren't in use.
     }
-
+    
     // MARK: - ARSCNViewDelegate
     
     func renderer(_ renderer: SCNSceneRenderer, updateAtTime time: TimeInterval) {
@@ -237,6 +247,48 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         }
         
     }
+    
+    func numberOfMLModels() -> Int {
+        return 2
+    }
+    
+    func titleForMLModel(at index: Int) -> String? {
+        switch index {
+        case 0:
+            return "Inception"
+        case 1:
+            return "SqueezeNet"
+        default:
+            return nil
+        }
+        
+    }
+    
+    func mlModel(at index:Int) -> MLModel? {
+        switch index {
+        case 0:
+            return Inceptionv3().model
+        case 1:
+            return SqueezeNet().model
+        default:
+            return nil
+        }
+        
+    }
+    
+    func updateMLModel() {
+        if let selectedModel = mlModel(at: self.modelSegmentedControl.selectedSegmentIndex) {
+            guard let vnModel = try? VNCoreMLModel(for: selectedModel) else {
+                fatalError("Could not load model.")
+            }
+            
+            self.mlModel = vnModel
+        }
+    }
+    
+    @IBAction func modelSegmentedControlValueChanged(sender : UISegmentedControl){
+        updateMLModel()
+    }
 }
 
 extension UIFont {
@@ -246,3 +298,4 @@ extension UIFont {
         return UIFont(descriptor: descriptor!, size: 0)
     }
 }
+
